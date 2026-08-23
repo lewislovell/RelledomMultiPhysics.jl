@@ -1,0 +1,13 @@
+name = "RelledomMultiPhysics"
+uuid = "9ad0264f-feef-421a-8c1d-4d43daca54de"
+authors = ["Lewis Lovell <116065074+lewislovell@users.noreply.github.com> and contributors"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.10.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
