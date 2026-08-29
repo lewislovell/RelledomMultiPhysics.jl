@@ -1,13 +1,24 @@
 name = "RelledomMultiPhysics"
 uuid = "9ad0264f-feef-421a-8c1d-4d43daca54de"
-authors = ["Lewis Lovell <116065074+lewislovell@users.noreply.github.com> and contributors"]
 version = "1.0.0-DEV"
+authors = ["Lewis Lovell <116065074+lewislovell@users.noreply.github.com> and contributors"]
+
+[deps]
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [compat]
+Aqua = "0.8.16"
+Plots = "1.41.7"
+SparseArrays = "1.12.0"
+Test = "1"
+TimerOutputs = "1.2.0"
 julia = "1.10.10"
 
 [extras]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test"]
+test = ["Aqua", "Test"]
