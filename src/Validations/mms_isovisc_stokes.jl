@@ -1,4 +1,6 @@
-include("../StokesSolvers.jl")
+module MMSIsoviscStokes
+
+using ..StokesSolvers
 using Plots
 
 """
@@ -76,9 +78,10 @@ end
 function validate(outputdata::VldData)
     (; fnum, fanlyt) = outputdata
     res_mat = fnum .- fanlyt # Residuals matrix
+    n = length(res_mat)
     l_inf = maximum(abs.(res_mat))
-    l1_norm = sum(abs.(res_mat))
-    l2_norm = sqrt(sum(map(r -> r^2,res_mat)))
+    l1_norm = sum(abs.(res_mat)) / n
+    l2_norm = sqrt(sum(map(r -> r^2,res_mat))/n)
     println("L_inf: $l_inf, L1-Norm: $l1_norm, L2-Norm: $l2_norm")
     return res_mat
 end
@@ -96,11 +99,12 @@ function compute_anlyt(sol_func, coord_struct)
     return sol_mat
 end
 
-function analyt_compare(mms_sol, vx_num, vy_num, p_num, coordinates)
+function analyt_compare(mms_sol, vx_num, vy_num, p_num, coordinates,
+    ::DirectMonolithic, plot_anlyt::Bool = true, plot_error::Bool = true)
     # Compute analytical solutions
     vx_anlyt = compute_anlyt(mms_sol.vx, coordinates.vx_coords)
     vy_anlyt = compute_anlyt(mms_sol.vy, coordinates.vy_coords)
-    p_anlyt = compute_anlyt(mms_sol.p, coordinates.p_coords)
+    p_anlyt  = compute_anlyt(mms_sol.p,  coordinates.p_coords)
 
     ### Validation Results ###
     println("Output for Vx:\n")
@@ -109,26 +113,99 @@ function analyt_compare(mms_sol, vx_num, vy_num, p_num, coordinates)
     res_vy = validate(VldData(vy_num[1:end-1,:], vy_anlyt[1:end-1,:]))
     println("\n Output for P:\n")
     res_p = validate(VldData(p_num[2:end-1,2:end-1], p_anlyt[2:end-1,2:end-1]))
-
-    plot_output(coordinates.vx_coords.xvec[1:end-1],
-        coordinates.vx_coords.yvec,
-        res_vx,
-        "Error in vx-Velocity, [m/s]"
-    )
-    plot_output(coordinates.vy_coords.xvec,
-        coordinates.vy_coords.yvec[1:end-1],
-        res_vy,
-        "Error in vy-Velocity, [m/s]"
-    )
-    plot_output(coordinates.p_coords.xvec[2:end-1],
-        coordinates.p_coords.yvec[2:end-1],
-        res_p,
-        "Error in p-Velocity, [Pa]"
-    )
+    if plot_anlyt
+        plot_output(coordinates.vx_coords.xvec[1:end-1],
+            coordinates.vx_coords.yvec,
+            vx_anlyt[:,1:end-1]*1e9,
+            "Vx-Velocity Analytic *10^-9, [m/s]"
+        )
+        plot_output(coordinates.vy_coords.xvec,
+            coordinates.vy_coords.yvec[1:end-1],
+            vy_anlyt[1:end-1,:]*1e9,
+            "Vy-Velocity Analytic *10^-9, [m/s]"
+        )
+        plot_output(coordinates.p_coords.xvec[2:end-1],
+            coordinates.p_coords.yvec[2:end-1],
+            p_anlyt[2:end-1,2:end-1]*1e-9,
+            "Pressure Analytic, [GPa]"
+        )
+    end
+    if plot_error
+        plot_output(coordinates.vx_coords.xvec[1:end-1],
+            coordinates.vx_coords.yvec,
+            res_vx*1e9,
+            "Error in vx-Velocity *10^-9, [m/s]"; 
+            cbar=:vik
+        )
+        plot_output(coordinates.vy_coords.xvec,
+            coordinates.vy_coords.yvec[1:end-1],
+            res_vy*1e9,
+            "Error in vy-Velocity *10^-9, [m/s]";
+            cbar=:vik
+        )
+        plot_output(coordinates.p_coords.xvec[2:end-1],
+            coordinates.p_coords.yvec[2:end-1],
+            res_p,
+            "Error in Pressure, [Pa]";
+            cbar=:vik
+        )
+    end
 end
 
+function analyt_compare(mms_sol, vx_num, vy_num, p_num, coordinates,
+    ::PseudoTransient, plot_anlyt::Bool = true, plot_error::Bool = true)
+    # Compute analytical solutions
+    vx_anlyt = compute_anlyt(mms_sol.vx, coordinates.vx_coords)
+    vy_anlyt = compute_anlyt(mms_sol.vy, coordinates.vy_coords)
+    p_anlyt  = compute_anlyt(mms_sol.p, coordinates.p_coords)
 
-function plot_output(xvec, yvec, var, title_str)
+    ### Validation Results ###
+    println("Output for Vx:\n")
+    res_vx = validate(VldData(vx_num, vx_anlyt))
+    println("\n Output for Vy:\n")
+    res_vy = validate(VldData(vy_num, vy_anlyt))
+    println("\n Output for P:\n")
+    res_p = validate(VldData(p_num, p_anlyt))
+    if plot_anlyt
+        plot_output(coordinates.vx_coords.xvec,
+            coordinates.vx_coords.yvec,
+            vx_anlyt*1e9,
+            "Vx-Velocity Analytic *10^-9, [m/s]"
+        )
+        plot_output(coordinates.vy_coords.xvec,
+            coordinates.vy_coords.yvec,
+            vy_anlyt*1e9,
+            "Vy-Velocity Analytic *10^-9, [m/s]"
+        )
+        plot_output(coordinates.p_coords.xvec,
+            coordinates.p_coords.yvec,
+            p_anlyt*1e-9,
+            "Pressure Analytic, [GPa]"
+        )
+    end
+    if plot_error
+        plot_output(coordinates.vx_coords.xvec,
+            coordinates.vx_coords.yvec,
+            res_vx*1e9,
+            "Error in vx-Velocity *10^-9, [m/s]"; 
+            cbar=:vik
+        )
+        plot_output(coordinates.vy_coords.xvec,
+            coordinates.vy_coords.yvec,
+            res_vy*1e9,
+            "Error in vy-Velocity *10^-9, [m/s]";
+            cbar=:vik
+        )
+        plot_output(coordinates.p_coords.xvec,
+            coordinates.p_coords.yvec,
+            res_p,
+            "Error in Pressure, [Pa]";
+            cbar=:vik
+        )
+    end
+end
+
+function plot_output(xvec, yvec, var, title_str; cbar = :berlin)
     varplot = heatmap(
         xvec, yvec, var,
         xlabel = "Distance [m]",
@@ -137,7 +214,8 @@ function plot_output(xvec, yvec, var, title_str)
         # colorbar_title = "Velocity (m/s)",
         yflip = true,
         # aspect_ratio = :equal,
-        c = :viridis
+        c = cgrad(cbar, rev = false),
+        right_margin=15Plots.mm
     )
     display(varplot)
 end
@@ -192,20 +270,7 @@ function mms_2d_validation(config::MMSParameters{T}) where {T}
     return StokesVars(vx, vy, p, xstokes, ystokes),
         StokesBCs(bc_vx, bc_vy, bc_p)
 end
-
-cpu_config = MMSParameters{Float64, Int64}()
-gpu_config = MMSParameters{Float32, Int32}()
-
-function main()
-    Params = cpu_config
-    mms_sol, mms_bcs = mms_2d_validation(Params)
-    (vx_num, vy_num, p_num), coordinates = isoviscous_stokes(Params, mms_bcs, 
-        VelP(), DirectMonolithic(), CPUSingle(), false, true,mms_sol= mms_sol, VldParams=Params)
-    analyt_compare(mms_sol, vx_num, vy_num, p_num, coordinates)
 end
-
-main()
-
 
 # @code_warntype mms_2d_validation(gpu_config)
 

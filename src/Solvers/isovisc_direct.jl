@@ -1,26 +1,26 @@
 using SparseArrays
 using TimerOutputs
 """
-    function sfd_stokes_const_eta(ModelParams, BCConfig, benchmark::bool = false,
-    validate::Bool = false; mm_sol= nothing, mms_params= nothing)
+    isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
+    ::CPUSingle, benchmark::Bool = false, is_validate::Bool = false; 
+    MMSSol = nothing, VldParams = nothing)
 Run isoviscous, incompressible stokes equations using a staggered-finite-
 difference numerical formulation. Includes benchmarking and validation.
 """
 function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
     ::CPUSingle, benchmark::Bool = false, is_validate::Bool = false; 
-    mms_sol = nothing, VldParams = nothing)
+    MMSSol = nothing, VldParams = nothing)
     
     # Input ModelParams
     w, h   = ModelParams.w, ModelParams.h    # Domain size [m]
     nx, ny = ModelParams.nx, ModelParams.ny  # Model gridpoints
     dx, dy = ModelParams.dx, ModelParams.dy  # Grid spacings [m]
-    dn     = ModelParams.dn          # Number of elements in linear system column
-    eta    = ModelParams.eta         # Viscosity [Pa s]
+    dn     = ModelParams.dn         # Number of elements in linear system column
+    eta    = ModelParams.eta        # Viscosity [Pa s]
     gy     = ModelParams.gy
-
-    if is_validate && !isnothing(VldParams)
-        w, h   = VldParams.w, VldParams.h # Domain size [m]
-        eta    = VldParams.eta             # Viscosity [Pa s]
+    if !is_validate
+        rho    = ModelParams.rho     # Density array [kg/m^3]
+        @assert size(rho) == (nx,ny)
     end
 
     # Derived ModelParams
@@ -31,7 +31,7 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
     # Density setup at basic nodal points [kg/m^3]
     rho_Mat = zeros(ny+1, nx+1)
     rho_Mat[:, 1:Int(round(nx / 2))] .= 3300     # Left Side
-    rho_Mat[:, (Int(round(nx/2))+1):end] .= 3300 # Right Side (inc ghost)
+    rho_Mat[:, (Int(round(nx/2))+1):end] .= 3400 # Right Side (inc ghost)
     # Linear System Setup
     l_mat = spzeros(3*(nx+1)*(ny+1), 3*(nx+1)*(ny+1))
     r_vec = zeros(3*(nx+1)*(ny+1), 1)
@@ -39,8 +39,8 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
     vx_num = zeros(ny+1, nx+1)
     vy_num = zeros(ny+1, nx+1)
     p_num  = zeros(ny+1, nx+1)
-    # Generate and store coordinates into a single struct
-    coordinates = coord_allocation(dx, dy, w, h)
+    # Generate and store Coordinates into a single struct
+    Coordinates = coord_allocation_direct(dx, dy, w, h)
     # Benchmark timer toggle
     to = TimerOutput()
     if !benchmark
@@ -57,7 +57,7 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
             # Right Side Boundary Condition for vx
             if j == nx
                 l_mat[gvx, gvx] = 1*eta
-                r_vec[gvx] = BCConfig.bc_vx.right #mms_sol.bc_vx.right
+                r_vec[gvx] = BCConfig.bc_vx.right
             else
                 # X-Stokes
                 l_mat[gvx, gvx - dn] = 2*eta*idx2   # vx1
@@ -72,8 +72,8 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
                 l_mat[gvx, gp] = idx*kconst       # P1
                 l_mat[gvx, gp + dn] = -idx*kconst   # P2
                 if is_validate
-                    r_vec[gvx] = mms_sol.xstokes(coordinates.vx_coords.xvec[j],
-                    coordinates.vx_coords.yvec[i])
+                    r_vec[gvx] = MMSSol.xstokes(Coordinates.vx_coords.xvec[j],
+                    Coordinates.vx_coords.yvec[i])
                 else
                     r_vec[gvx] = 0.0
                 end
@@ -96,8 +96,8 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
                 l_mat[gvy, gp] = idy*kconst       # P1
                 l_mat[gvy, gp + 3] = -idy*kconst    # P2
                 if is_validate
-                    r_vec[gvy] = mms_sol.ystokes(coordinates.vy_coords.xvec[j],
-                    coordinates.vy_coords.yvec[i])
+                    r_vec[gvy] = MMSSol.ystokes(Coordinates.vy_coords.xvec[j],
+                    Coordinates.vy_coords.yvec[i])
                 else
                     r_vec[gvy] = -gy*(rho_Mat[i, j] + rho_Mat[i, j + 1])/2
                 end
@@ -106,7 +106,7 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
             if i == 2 && j==2
                 l_mat[gp, gp] = 1*kconst
                 if is_validate
-                    r_vec[gp] = mms_sol.p(dx/2, dy/2)
+                    r_vec[gp] = MMSSol.p(dx/2, dy/2)
                 else
                     r_vec[gp] = 0.0
                 end
@@ -244,7 +244,7 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
     end
     print_timer(to)
 
-    return (vx_num, vy_num, p_num), coordinates
+    return (vx_num, vy_num, p_num), Coordinates
 end
 
 @kwdef struct Coords{XVEC, YVEC}
@@ -257,7 +257,7 @@ end
     p_coords::P
 end
 
-function coord_allocation(dx,dy,xsize,ysize)
+function coord_allocation_direct(dx,dy,xsize,ysize)
     vx_coords = Coords(
         xvec = 0.0:dx:(xsize+dx),
         yvec =  (-dy/2):dy:(ysize+dy/2)
@@ -269,11 +269,6 @@ function coord_allocation(dx,dy,xsize,ysize)
     p_coords = Coords(
         xvec = (-dx/2):dx:(xsize+dx/2),
         yvec = (-dy/2):dy:(ysize+dy/2)
-    )
-    VarCoords(
-        vx_coords = vx_coords,
-        vy_coords = vy_coords,
-        p_coords = p_coords
     )
     return VarCoords(vx_coords,vy_coords,p_coords)
 end
