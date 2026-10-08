@@ -1,5 +1,7 @@
 module RelledomMultiPhysics
 
-# Write your package code here.
+include("SolverCore.jl")
+include("StokesSolvers.jl")
+include("Benchmarks.jl")
 
 end

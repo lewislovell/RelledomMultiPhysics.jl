@@ -1,5 +1,6 @@
 using SparseArrays
 using TimerOutputs
+using ..SolverCore
 """
     isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
     ::CPUSingle, benchmark::Bool = false, is_validate::Bool = false; 
@@ -61,15 +62,15 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
             else
                 # X-Stokes
                 l_mat[gvx, gvx - dn] = 2*eta*idx2   # vx1
-                l_mat[gvx, gvx - 3] = eta*idy2    # vx2
+                l_mat[gvx, gvx - 3] = eta*idy2      # vx2
                 l_mat[gvx, gvx] = -2*eta*idx2-2*eta*idx2-eta*idy2-eta*idy2 # vx3
-                l_mat[gvx, gvx + 3] = eta*idy2    # vx4
+                l_mat[gvx, gvx + 3] = eta*idy2      # vx4
                 l_mat[gvx, gvx + dn] = 2*eta*idx2   # vx5
-                l_mat[gvx, gvy - 3] = eta*idxdy    # vy1
-                l_mat[gvx, gvy] = -eta*idxdy      # vy2
+                l_mat[gvx, gvy - 3] = eta*idxdy     # vy1
+                l_mat[gvx, gvy] = -eta*idxdy        # vy2
                 l_mat[gvx, gvy + dn - 3] = -eta*idxdy # vy3
                 l_mat[gvx, gvy + dn] = eta*idxdy    # vy4
-                l_mat[gvx, gp] = idx*kconst       # P1
+                l_mat[gvx, gp] = idx*kconst         # P1
                 l_mat[gvx, gp + dn] = -idx*kconst   # P2
                 if is_validate
                     r_vec[gvx] = MMSSol.xstokes(Coordinates.vx_coords.xvec[j],
@@ -86,14 +87,15 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
                 # Y-Stokes
                 l_mat[gvy, gvx - dn] = eta*idxdy    # vx1
                 l_mat[gvy, gvx - dn + 3] = -eta*idxdy # vx2
-                l_mat[gvy, gvx] = -eta*idxdy      # vx3
+                l_mat[gvy, gvx] = -eta*idxdy        # vx3
                 l_mat[gvy, gvx + 3] = eta*idxdy     # vx4
                 l_mat[gvy, gvy - dn] = eta*idx2     # vy1
                 l_mat[gvy, gvy - 3] = 2*eta*idy2    # vy2
-                l_mat[gvy, gvy] = -eta*idx2 - eta*idx2 - 2*eta*idy2 - 2*eta*idy2 # vy3
+                l_mat[gvy, gvy] = -eta*idx2 - eta*idx2 - 
+                                    2*eta*idy2 - 2*eta*idy2 # vy3
                 l_mat[gvy, gvy + 3] = 2*eta*idy2    # vy4
                 l_mat[gvy, gvy + dn] = eta*idx2     # vy5
-                l_mat[gvy, gp] = idy*kconst       # P1
+                l_mat[gvy, gp] = idy*kconst         # P1
                 l_mat[gvy, gp + 3] = -idy*kconst    # P2
                 if is_validate
                     r_vec[gvy] = MMSSol.ystokes(Coordinates.vy_coords.xvec[j],
@@ -247,43 +249,43 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::DirectMonolithic,
     return (vx_num, vy_num, p_num), Coordinates
 end
 
-@kwdef struct Coords{XVEC, YVEC}
-    xvec::XVEC
-    yvec::YVEC
-end
-@kwdef struct VarCoords{VX, VY, P}
-    vx_coords::VX
-    vy_coords::VY
-    p_coords::P
-end
+# @kwdef struct Coords{XVEC, YVEC}
+#     xvec::XVEC
+#     yvec::YVEC
+# end
+# @kwdef struct VarCoords{VX, VY, P}
+#     vx_coords::VX
+#     vy_coords::VY
+#     p_coords::P
+# end
 
-function coord_allocation_direct(dx,dy,xsize,ysize)
-    vx_coords = Coords(
-        xvec = 0.0:dx:(xsize+dx),
-        yvec =  (-dy/2):dy:(ysize+dy/2)
-    )
-    vy_coords = Coords(
-        xvec = (-dx/2):dx:(xsize+dx/2),
-        yvec =  0.0:dy:(ysize+dy)
-    )
-    p_coords = Coords(
-        xvec = (-dx/2):dx:(xsize+dx/2),
-        yvec = (-dy/2):dy:(ysize+dy/2)
-    )
-    return VarCoords(vx_coords,vy_coords,p_coords)
-end
+# function coord_allocation_direct(dx,dy,xsize,ysize)
+#     vx_coords = Coords(
+#         xvec = 0.0:dx:(xsize+dx),
+#         yvec =  (-dy/2):dy:(ysize+dy/2)
+#     )
+#     vy_coords = Coords(
+#         xvec = (-dx/2):dx:(xsize+dx/2),
+#         yvec =  0.0:dy:(ysize+dy)
+#     )
+#     p_coords = Coords(
+#         xvec = (-dx/2):dx:(xsize+dx/2),
+#         yvec = (-dy/2):dy:(ysize+dy/2)
+#     )
+#     return VarCoords(vx_coords,vy_coords,p_coords)
+# end
 
-function plot_output(xvec, yvec, var, title_str)
-    varplot = heatmap(
-        xvec, yvec, var,
-        xlabel = "Distance [m]",
-        ylabel = "Depth [m]",
-        title = title_str,
-        # colorbar_title = "Velocity (m/s)",
-        yflip = true,
-        # aspect_ratio = :equal,
-        c = :viridis
-    )
-    display(varplot)
-end
+# function plot_output(xvec, yvec, var, title_str)
+#     varplot = heatmap(
+#         xvec, yvec, var,
+#         xlabel = "Distance [m]",
+#         ylabel = "Depth [m]",
+#         title = title_str,
+#         # colorbar_title = "Velocity (m/s)",
+#         yflip = true,
+#         # aspect_ratio = :equal,
+#         c = :viridis
+#     )
+#     display(varplot)
+# end
 

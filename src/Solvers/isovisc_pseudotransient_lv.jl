@@ -1,5 +1,5 @@
 using TimerOutputs
-using Plots, Plots.PlotMeasures
+using Plots, Plots.PlotMeasures, LoopVectorization
 using ..SolverCore
 
 # macro d_xa(A) esc(:($A[ix+1,iy]-$A[ix,iy])) end
@@ -12,15 +12,15 @@ using ..SolverCore
 # macro d2_ya(A) esc(:($A[ix,iy+1]-2*$A[ix,iy]+$A[ix,iy-1])) end
 
 """
-    x_stokes!(p, vx, vx_old, _dx, _dx2, _dy2, eta, dtau, _rho_pt, fx, 
+    x_stokes_lv!(p, vx, vx_old, _dx, _dx2, _dy2, eta, dtau, _rho_pt, fx, 
     xvec, yvec, vxtop, vxbottom, v_relax)
 2D x-Stokes equation, implicitly utilising the top and bottom boundary equations 
 """
-function x_stokes!(p, vx, vx_old, _dx, _dx2, _dy2, eta, dtau, _rho_pt, fx,
+function x_stokes_lv!(p, vx, vx_old, _dx, _dx2, _dy2, eta, dtau, _rho_pt, fx,
     vxtop, vxbottom, v_relax)
     nx, ny = size(p)[1]+1, size(p)[2]+1
 
-    for iy = 2:ny-2
+    @tturbo for iy = 2:ny-2
         for ix = 2:nx-1
             vx[ix,iy] = vx_old[ix,iy] + v_relax*_rho_pt*dtau*(
                 @d2_xa(vx_old)*_dx2*eta + @d2_ya(vx_old)*_dy2*eta -
@@ -28,14 +28,14 @@ function x_stokes!(p, vx, vx_old, _dx, _dx2, _dy2, eta, dtau, _rho_pt, fx,
         end
     end
     iy = 1
-    for ix = 2:nx-1
+    @tturbo for ix = 2:nx-1
         vx[ix,iy] = vx_old[ix,iy] + v_relax*_rho_pt*dtau*(
             @d2_xa(vx_old)*_dx2*eta + (2*vxtop[ix]-3*vx_old[ix,iy]+
             vx_old[ix,iy+1])*_dy2*eta - @d_xb(p)*_dx - 
             fx[ix,iy])
     end
     iy = ny-1
-    for ix = 2:nx-1
+    @tturbo for ix = 2:nx-1
         vx[ix,iy] = vx_old[ix,iy] + v_relax*_rho_pt*dtau*(
             @d2_xa(vx_old)*_dx2*eta +(vx_old[ix,iy-1]-3*vx_old[ix,iy]+
             2*vxbottom[ix])*_dy2*eta - @d_xb(p)*_dx - fx[ix,iy])
@@ -44,15 +44,15 @@ function x_stokes!(p, vx, vx_old, _dx, _dx2, _dy2, eta, dtau, _rho_pt, fx,
 end
 
 """
-    y_stokes!(p, vy, vy_old, _dy, _dx2, _dy2, eta, dtau, _rho_pt, fy, 
+    y_stokes_lv!(p, vy, vy_old, _dy, _dx2, _dy2, eta, dtau, _rho_pt, fy, 
     xvec, yvec, vyleft, vyright, v_relax)
 2D y-Stokes equation, implicitly utilising the left and right boundary equations
 """
-function y_stokes!(p, vy, vy_old, _dy, _dx2, _dy2, eta, dtau, _rho_pt, fy,
+function y_stokes_lv!(p, vy, vy_old, _dy, _dx2, _dy2, eta, dtau, _rho_pt, fy,
     vyleft, vyright, v_relax)
     nx, ny = size(p)[1]+1, size(p)[2]+1
 
-    for iy = 2:ny-1
+    @tturbo for iy = 2:ny-1
         for ix = 2:nx-2
             vy[ix,iy] = vy_old[ix,iy] + v_relax*_rho_pt*dtau*(
                 (@d2_xa(vy_old))*_dx2*eta + @d2_ya(vy_old)*_dy2*eta - 
@@ -60,13 +60,13 @@ function y_stokes!(p, vy, vy_old, _dy, _dx2, _dy2, eta, dtau, _rho_pt, fy,
         end
     end
     ix = 1
-    for iy = 2:ny-1
+    @tturbo for iy = 2:ny-1
         vy[ix,iy] = vy_old[ix,iy] + v_relax*_rho_pt*dtau*(
             (2*vyleft[iy]-3*vy_old[ix,iy]+vy_old[ix+1,iy])*_dx2*eta + 
                 @d2_ya(vy_old)*_dy2*eta - @d_yb(p)*_dy - fy[ix,iy])
     end
     ix = nx-1
-    for iy = 2:ny-1
+    @tturbo for iy = 2:ny-1
         vy[ix,iy] = vy_old[ix,iy] + v_relax*_rho_pt*dtau*(
             (vy_old[ix-1,iy]-3*vy_old[ix,iy]+2*vyright[iy])*_dx2*eta + 
                 @d2_ya(vy_old)*_dy2*eta - @d_yb(p)*_dy - fy[ix,iy])
@@ -75,13 +75,13 @@ function y_stokes!(p, vy, vy_old, _dy, _dx2, _dy2, eta, dtau, _rho_pt, fy,
 end
 
 """
-    continuity!(p, vx, vy, _dx, _dy, beta2, dtau, p_relax)
+    continuity_lv!(p, vx, vy, _dx, _dy, beta2, dtau, p_relax)
 2D continuity equation with artificial compressibility for pseudo-transient 
 time-derivative and relaxation parameter to boost convergence.
 """
-function continuity!(p, vx, vy, _dx, _dy, beta2, dtau, p_relax)
+function continuity_lv!(p, vx, vy, _dx, _dy, beta2, dtau, p_relax)
     nx, ny = size(p)[1]+1, size(p)[2]+1
-    for iy = 1:ny-1
+    @tturbo for iy = 1:ny-1
         for ix = 1:nx-1
             p[ix,iy] -= p_relax*beta2*dtau*(@d_xa(vx)*_dx+@d_ya(vy)*_dy)
         end
@@ -141,14 +141,14 @@ end
 # end
 """
     function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::PseudoTransient,
-    ::CPUSingle, benchmark::Bool = false, is_validate::Bool = false; 
+    ::CPULV, benchmark::Bool = false, is_validate::Bool = false; 
     MMSSol = nothing, VldParams = nothing)
 Run isoviscous, incompressible stokes equations using a staggered-finite-
 difference numerical formulation. Includes benchmarking and validation.
 Note: for PsuedoTransience rows correspond to x and columns correspond to y
 """
 function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::PseudoTransient,
-    ::CPUSingle, benchmark::Bool = false, is_validate::Bool = false; 
+    ::CPULV, benchmark::Bool = false, is_validate::Bool = false; 
     MMSSol = nothing, VldParams = nothing)
     # Obtain float and int types
     T = typeof(ModelParams.w); I = typeof(ModelParams.nx)
@@ -251,12 +251,12 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::PseudoTransient,
         vx_old .= vx_num
         vy_old .= vy_num
         # Compute Stokes updates
-        x_stokes!(p_num, vx_num, vx_old, _dx, _dx2, _dy2, eta, dtau, 
+        x_stokes_lv!(p_num, vx_num, vx_old, _dx, _dx2, _dy2, eta, dtau,
         _rho_pt, fx, vxtop, vxbottom, v_relax)
-        y_stokes!(p_num, vy_num, vy_old, _dy, _dx2, _dy2, eta, dtau, 
+        y_stokes_lv!(p_num, vy_num, vy_old, _dy, _dx2, _dy2, eta, dtau,
         _rho_pt, fy, vyleft, vyright, v_relax)
         # Update continuity utilising updated velocities
-        continuity!(p_num, vx_num, vy_num, _dx, _dy, beta2, dtau, p_relax)
+        continuity_lv!(p_num, vx_num, vy_num, _dx, _dy, beta2, dtau, p_relax)
         if !benchmark
             # Compute residuals
             if mod(iter, n_check) == 0

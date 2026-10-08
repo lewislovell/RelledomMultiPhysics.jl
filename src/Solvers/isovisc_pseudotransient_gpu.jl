@@ -1,15 +1,16 @@
 using TimerOutputs
 using Plots, Plots.PlotMeasures
 using oneAPI, KernelAbstractions
+using ..SolverCore
 
-macro d_xa(A) esc(:($A[ix+1,iy]-$A[ix,iy])) end
-macro d_ya(A) esc(:($A[ix,iy+1]-$A[ix,iy])) end
+# macro d_xa(A) esc(:($A[ix+1,iy]-$A[ix,iy])) end
+# macro d_ya(A) esc(:($A[ix,iy+1]-$A[ix,iy])) end
 
-macro d_xb(A) esc(:($A[ix,iy]-$A[ix-1,iy])) end
-macro d_yb(A) esc(:($A[ix,iy]-$A[ix,iy-1])) end
+# macro d_xb(A) esc(:($A[ix,iy]-$A[ix-1,iy])) end
+# macro d_yb(A) esc(:($A[ix,iy]-$A[ix,iy-1])) end
 
-macro d2_xa(A) esc(:($A[ix+1,iy]-2*$A[ix,iy]+$A[ix-1,iy])) end
-macro d2_ya(A) esc(:($A[ix,iy+1]-2*$A[ix,iy]+$A[ix,iy-1])) end
+# macro d2_xa(A) esc(:($A[ix+1,iy]-2*$A[ix,iy]+$A[ix-1,iy])) end
+# macro d2_ya(A) esc(:($A[ix,iy+1]-2*$A[ix,iy]+$A[ix,iy-1])) end
 
 """
     x_stokes!(p, vx, vx_old, _dx, _dx2, _dy2, eta, dtau, _rho_pt, fx, 
@@ -84,16 +85,16 @@ time-derivative and relaxation parameter to boost convergence.
         @inbounds p[ix,iy] -= p_relax*beta2*dtau*(@d_xa(vx)*_dx+@d_ya(vy)*_dy)
     end
 end
-function eval_forcing!(fy, rho, gy)
-    # fy = -gy (rho1+rho2)/2
-    nx, ny = size(fy)[1]+1, size(fy)[2]
-    for iy = 1:ny
-        for ix = 1:nx-1
-            fy[ix, iy] = gy*(rho[ix,iy] + rho[ix+1,iy])/2
-        end
-    end
-    return nothing
-end
+# function eval_forcing!(fy, rho, gy)
+#     # fy = -gy (rho1+rho2)/2
+#     nx, ny = size(fy)[1]+1, size(fy)[2]
+#     for iy = 1:ny
+#         for ix = 1:nx-1
+#             fy[ix, iy] = gy*(rho[ix,iy] + rho[ix+1,iy])/2
+#         end
+#     end
+#     return nothing
+# end
 """
     coord_to_gpu(backend, range, T)
 Helper function to create gpu arrays for BCs
@@ -108,21 +109,21 @@ function coord_to_gpu(backend, range, T)
     return gpu_array
 end
 
-function coord_allocation(dx,dy,xsize,ysize)
-    vx_coords = Coords(
-        xvec = 0.0:dx:(xsize),
-        yvec =  (dy/2):dy:(ysize-dy/2)
-    )
-    vy_coords = Coords(
-        xvec = (dx/2):dx:(xsize-dx/2),
-        yvec =  0.0:dy:(ysize)
-    )
-    p_coords = Coords(
-        xvec = (dx/2):dx:(xsize-dx/2),
-        yvec = (dy/2):dy:(ysize-dy/2)
-    )
-    return VarCoords(vx_coords,vy_coords,p_coords)
-end
+# function coord_allocation(dx,dy,xsize,ysize)
+#     vx_coords = Coords(
+#         xvec = 0.0:dx:(xsize),
+#         yvec =  (dy/2):dy:(ysize-dy/2)
+#     )
+#     vy_coords = Coords(
+#         xvec = (dx/2):dx:(xsize-dx/2),
+#         yvec =  0.0:dy:(ysize)
+#     )
+#     p_coords = Coords(
+#         xvec = (dx/2):dx:(xsize-dx/2),
+#         yvec = (dy/2):dy:(ysize-dy/2)
+#     )
+#     return VarCoords(vx_coords,vy_coords,p_coords)
+# end
 
 
 # """
@@ -174,7 +175,7 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::PseudoTransient,
     _dx2, _dy2 = 1/dx^2, 1/dy^2  # Inverse grid spacings squared [1/m^2]
     # Pseudo-transient parameters.
     tol     = T(1e-6)   # Tolerance for convergence 
-    maxiter = I(60_000) # Maximum number of iterations if convergence isn't reached
+    maxiter = I(40_000) # Maximum number of iterations if convergence isn't reached
     n_check = I(1000)   # Number of iterations between each residual calculation
     nvis    = I(1000)  # Number of iterations between each display plot
     dtau    = T(1.0)    # Pseudo-transient time-step
@@ -287,38 +288,62 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::PseudoTransient,
         # Update continuity utilising updated velocities
         gpu_continuity!(p_num, vx_num, vy_num, _dx, _dy, beta2, dtau, p_relax;
             ndrange=size(p_num))
-        # Compute residuals
-        if mod(iter, n_check) == 0
-            KernelAbstractions.synchronize(backend)
-            r_infc  = maximum(abs.(p_num .- p_old))/(p_relax*beta2*dtau)
-            r_infvx = maximum(abs.(vx_num .- vx_old))/(v_relax*_rho_pt*dtau)
-            r_infvy = maximum(abs.(vy_num .- vy_old))/(v_relax*_rho_pt*dtau)
-            push!(r_inf_vec, max(r_infc, r_infvx, r_infvy))
-            push!(nt_vec, iter)
-        end
-        # Visualise PT iterations
-        if mod(iter,nvis) == 0
-            KernelAbstractions.synchronize(backend)
-            p1 = heatmap(Array(vy_num)'*1e9;
-            # p1 = heatmap(Array(p_num)'*1e-9;
-            title="Iter=$iter",
-                        yflip=true, 
-                        c=cgrad(:berlin, rev=false),
-                        right_margin=15Plots.mm)
-            p2 = plot(nt_vec./nx, r_inf_vec; 
-                        xlabel="iter/nx", ylabel="err",
-                        yscale=:log10, grid=true, markershape=:circle, markersize=4)
-            display(plot(p1, p2; layout=(2, 1)))
-            frame(anim)
-            nframes += 1
+        if !benchmark
+            # Compute residuals
+            if mod(iter, n_check) == 0
+                KernelAbstractions.synchronize(backend)
+                r_infc  = maximum(abs.(p_num .- p_old))/(p_relax*beta2*dtau)
+                r_infvx = maximum(abs.(vx_num .- vx_old))/(v_relax*_rho_pt*dtau)
+                r_infvy = maximum(abs.(vy_num .- vy_old))/(v_relax*_rho_pt*dtau)
+                push!(r_inf_vec, max(r_infc, r_infvx, r_infvy))
+                push!(nt_vec, iter)
+            end
+            # Visualise PT iterations
+            if mod(iter,nvis) == 0
+                KernelAbstractions.synchronize(backend)
+                p1 = heatmap(Array(vy_num)'*1e9;
+                # p1 = heatmap(Array(p_num)'*1e-9;
+                title="Iter=$iter",
+                            yflip=true, 
+                            c=cgrad(:berlin, rev=false),
+                            right_margin=15Plots.mm)
+                p2 = plot(nt_vec./nx, r_inf_vec; 
+                            xlabel="iter/nx", ylabel="err",
+                            yscale=:log10, grid=true, markershape=:circle, markersize=4)
+                display(plot(p1, p2; layout=(2, 1)))
+                frame(anim)
+                nframes += 1
+            end
         end
         iter += 1
     end
     KernelAbstractions.synchronize(backend)
     end
-    if nframes > 0
-        gif(anim, "isovisc_pt_gpu.gif", fps = 15)
+    if benchmark
+        t_toc = TimerOutputs.time(to["SFD Stokes Const Eta"])*1e-9
+        niter = iter - 1
+        n_x_updates = (nx-2)*(ny-1)
+        n_y_updates = (nx-1)*(ny-2)
+        n_continuity_updates = (nx-1)*(ny-1)
+        n_reads = 10*(n_x_updates+n_y_updates) + 5*n_continuity_updates
+        n_writes = n_x_updates + n_y_updates + n_continuity_updates
+        a_eff = (n_reads+n_writes)*sizeof(T)*niter*1e-9
+        t_eff = a_eff/t_toc
+        return (Array(vx_num)', Array(vy_num)', Array(p_num)'), coordinates, 
+            PerformanceData(
+            method = :PseudoTransient,
+            float_type = T,
+            nx = nx,
+            ny = ny,
+            a_eff = a_eff,
+            t_toc = t_toc,
+            t_eff = t_eff
+            )
+    else
+        if nframes > 0
+            gif(anim, "isovisc_pt_gpu.gif", fps = 15)
+        end
+        return (Array(vx_num)', Array(vy_num)', Array(p_num)'), coordinates
     end
-    return (Array(vx_num)', Array(vy_num)', Array(p_num)'), coordinates
 end
 

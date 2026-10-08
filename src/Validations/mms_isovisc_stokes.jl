@@ -1,6 +1,6 @@
 module MMSIsoviscStokes
 
-using ..StokesSolvers
+using RelledomMultiPhysics.StokesSolvers
 using Plots
 
 """
