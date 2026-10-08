@@ -5,16 +5,20 @@ authors = ["Lewis Lovell <116065074+lewislovell@users.noreply.github.com> and co
 
 [deps]
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
+LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 
 [compat]
 Aqua = "0.8.16"
 KernelAbstractions = "0.9.42"
+LoopVectorization = "0.12.174"
 Plots = "1.41.7"
-SparseArrays = "1.12.0"
+SparseArrays = "1.10"
+Statistics = "1.10"
 Test = "1"
 TimerOutputs = "1.2.0"
 julia = "1.10.10"
