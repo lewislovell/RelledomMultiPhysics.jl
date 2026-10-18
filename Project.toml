@@ -14,7 +14,7 @@ oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 
 [compat]
 Aqua = "0.8.16"
-KernelAbstractions = "0.9.42"
+KernelAbstractions = "0.9.42, 0.10"
 LoopVectorization = "0.12.174"
 Plots = "1.41.7"
 SparseArrays = "1.10"
