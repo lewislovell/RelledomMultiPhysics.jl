@@ -1,4 +1,4 @@
-# RelledomMultiPhysics.jl Documentation
+# RelledomMultiPhysics.jl
 
 Welcome!
 

@@ -1,7 +1,7 @@
 using Documenter, RelledomMultiPhysics
 
 makedocs(
-    sitename = "RelledomMultiPhysics.jl Documentation",
+    sitename = "RelledomMultiPhysics.jl",
     modules  = [RelledomMultiPhysics],
     pages    = [
         "Home" => "index.md",

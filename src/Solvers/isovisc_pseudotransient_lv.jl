@@ -2,41 +2,32 @@ using TimerOutputs
 using Plots, Plots.PlotMeasures, LoopVectorization
 using ..SolverCore
 
-# macro d_xa(A) esc(:($A[ix+1,iy]-$A[ix,iy])) end
-# macro d_ya(A) esc(:($A[ix,iy+1]-$A[ix,iy])) end
-
-# macro d_xb(A) esc(:($A[ix,iy]-$A[ix-1,iy])) end
-# macro d_yb(A) esc(:($A[ix,iy]-$A[ix,iy-1])) end
-
-# macro d2_xa(A) esc(:($A[ix+1,iy]-2*$A[ix,iy]+$A[ix-1,iy])) end
-# macro d2_ya(A) esc(:($A[ix,iy+1]-2*$A[ix,iy]+$A[ix,iy-1])) end
-
 """
     x_stokes_lv!(p, vx, vx_old, _dx, _dx2, _dy2, eta, dtau, _rho_pt, fx, 
-    xvec, yvec, vxtop, vxbottom, v_relax)
-2D x-Stokes equation, implicitly utilising the top and bottom boundary equations 
+    xvec, yvec, vxtop, vxbottom)
+2D x-Stokes equation with top and bottom boundary conditions.
 """
 function x_stokes_lv!(p, vx, vx_old, _dx, _dx2, _dy2, eta, dtau, _rho_pt, fx,
-    vxtop, vxbottom, v_relax)
+    vxtop, vxbottom)
     nx, ny = size(p)[1]+1, size(p)[2]+1
 
     @tturbo for iy = 2:ny-2
         for ix = 2:nx-1
-            vx[ix,iy] = vx_old[ix,iy] + v_relax*_rho_pt*dtau*(
+            vx[ix,iy] = vx_old[ix,iy] + _rho_pt*dtau*(
                 @d2_xa(vx_old)*_dx2*eta + @d2_ya(vx_old)*_dy2*eta -
                  @d_xb(p)*_dx - fx[ix,iy])
         end
     end
     iy = 1
     @tturbo for ix = 2:nx-1
-        vx[ix,iy] = vx_old[ix,iy] + v_relax*_rho_pt*dtau*(
+        vx[ix,iy] = vx_old[ix,iy] + _rho_pt*dtau*(
             @d2_xa(vx_old)*_dx2*eta + (2*vxtop[ix]-3*vx_old[ix,iy]+
             vx_old[ix,iy+1])*_dy2*eta - @d_xb(p)*_dx - 
             fx[ix,iy])
     end
     iy = ny-1
     @tturbo for ix = 2:nx-1
-        vx[ix,iy] = vx_old[ix,iy] + v_relax*_rho_pt*dtau*(
+        vx[ix,iy] = vx_old[ix,iy] + _rho_pt*dtau*(
             @d2_xa(vx_old)*_dx2*eta +(vx_old[ix,iy-1]-3*vx_old[ix,iy]+
             2*vxbottom[ix])*_dy2*eta - @d_xb(p)*_dx - fx[ix,iy])
     end
@@ -45,29 +36,29 @@ end
 
 """
     y_stokes_lv!(p, vy, vy_old, _dy, _dx2, _dy2, eta, dtau, _rho_pt, fy, 
-    xvec, yvec, vyleft, vyright, v_relax)
-2D y-Stokes equation, implicitly utilising the left and right boundary equations
+    xvec, yvec, vyleft, vyright)
+2D y-Stokes equation with left and right boundary conditions.
 """
 function y_stokes_lv!(p, vy, vy_old, _dy, _dx2, _dy2, eta, dtau, _rho_pt, fy,
-    vyleft, vyright, v_relax)
+    vyleft, vyright)
     nx, ny = size(p)[1]+1, size(p)[2]+1
 
     @tturbo for iy = 2:ny-1
         for ix = 2:nx-2
-            vy[ix,iy] = vy_old[ix,iy] + v_relax*_rho_pt*dtau*(
+            vy[ix,iy] = vy_old[ix,iy] + _rho_pt*dtau*(
                 (@d2_xa(vy_old))*_dx2*eta + @d2_ya(vy_old)*_dy2*eta - 
                 @d_yb(p)*_dy - fy[ix,iy])
         end
     end
     ix = 1
     @tturbo for iy = 2:ny-1
-        vy[ix,iy] = vy_old[ix,iy] + v_relax*_rho_pt*dtau*(
+        vy[ix,iy] = vy_old[ix,iy] + _rho_pt*dtau*(
             (2*vyleft[iy]-3*vy_old[ix,iy]+vy_old[ix+1,iy])*_dx2*eta + 
                 @d2_ya(vy_old)*_dy2*eta - @d_yb(p)*_dy - fy[ix,iy])
     end
     ix = nx-1
     @tturbo for iy = 2:ny-1
-        vy[ix,iy] = vy_old[ix,iy] + v_relax*_rho_pt*dtau*(
+        vy[ix,iy] = vy_old[ix,iy] + _rho_pt*dtau*(
             (vy_old[ix-1,iy]-3*vy_old[ix,iy]+2*vyright[iy])*_dx2*eta + 
                 @d2_ya(vy_old)*_dy2*eta - @d_yb(p)*_dy - fy[ix,iy])
     end
@@ -75,70 +66,20 @@ function y_stokes_lv!(p, vy, vy_old, _dy, _dx2, _dy2, eta, dtau, _rho_pt, fy,
 end
 
 """
-    continuity_lv!(p, vx, vy, _dx, _dy, beta2, dtau, p_relax)
-2D continuity equation with artificial compressibility for pseudo-transient 
-time-derivative and relaxation parameter to boost convergence.
+    continuity_lv!(p, vx, vy, _dx, _dy, _beta, dtau)
+2D continuity equation with artificial compressibility for pseudo-transient
+time integration.
 """
-function continuity_lv!(p, vx, vy, _dx, _dy, beta2, dtau, p_relax)
+function continuity_lv!(p, vx, vy, _dx, _dy, _beta, dtau)
     nx, ny = size(p)[1]+1, size(p)[2]+1
     @tturbo for iy = 1:ny-1
         for ix = 1:nx-1
-            p[ix,iy] -= p_relax*beta2*dtau*(@d_xa(vx)*_dx+@d_ya(vy)*_dy)
+            p[ix,iy] -= dtau*_beta*(@d_xa(vx)*_dx+@d_ya(vy)*_dy)
         end
     end
     return nothing
 end
-# """
-#     eval_forcing!(fy, rho, gy)
-# Function to unpack density array into forcing term in y-Stokes.
-# """
-# function eval_forcing!(fy, rho, gy)
-#     # fy = -gy (rho1+rho2)/2
-#     nx, ny = size(fy)[1]+1, size(fy)[2]
-#     for iy = 1:ny
-#         for ix = 1:nx-1
-#             fy[ix, iy] = gy*(rho[ix,iy] + rho[ix+1,iy])/2
-#         end
-#     end
-#     return nothing
-# end
-# """
-#     coord_allocation(dx,dy,xsize,ysize)
-# Struct to store coordinate vectors for x-y Stokes and Continuity equation nodal
-# points.
-# """
-# function coord_allocation(dx,dy,xsize,ysize)
-#     vx_coords = Coords(
-#         xvec = 0.0:dx:(xsize),
-#         yvec =  (dy/2):dy:(ysize-dy/2)
-#     )
-#     vy_coords = Coords(
-#         xvec = (dx/2):dx:(xsize-dx/2),
-#         yvec =  0.0:dy:(ysize)
-#     )
-#     p_coords = Coords(
-#         xvec = (dx/2):dx:(xsize-dx/2),
-#         yvec = (dy/2):dy:(ysize-dy/2)
-#     )
-#     return VarCoords(vx_coords,vy_coords,p_coords)
-# end
-# """
-#     plot_output(xvec, yvec, var, title_str)
-# Function to display heatmap output of variable arrays.
-# """
-# function plot_output(xvec, yvec, var, title_str)
-#     varplot = heatmap(
-#         xvec, yvec, var,
-#         xlabel = "Distance [m]",
-#         ylabel = "Depth [m]",
-#         title = title_str,
-#         # colorbar_title = "Velocity (m/s)",
-#         yflip = true,
-#         # aspect_ratio = :equal,
-#         c = :viridis
-#     )
-#     display(varplot)
-# end
+
 """
     function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::PseudoTransient,
     ::CPULV, benchmark::Bool = false, is_validate::Bool = false; 
@@ -168,22 +109,21 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::PseudoTransient,
     _dx, _dy = 1/dx, 1/dy        # Inverse grid spacings [1/m]
     _dx2, _dy2 = 1/dx^2, 1/dy^2  # Inverse grid spacings squared [1/m^2]
     # Pseudo-transient parameters.
-    tol     = T(1e-6)   # Tolerance for convergence 
     maxiter = I(40_000) # Maximum number of iterations
-    n_check = I(1000)   # Number of iterations between each residual calculation
-    nvis    = I(1000)   # Number of iterations between each display plot
-    dtau    = T(1.0)    # Pseudo-transient time-step
-    cfl_v   = T(1.5)    # CFL for pseudo-transient forward Euler viscous flow
-    cfl_a   = T(1.5)    # CFL for pseudo-transient wave equation
-    v_relax = T(0.25)   # Viscous flow relaxation
-    p_relax = T(0.25)   # Pressure wave relaxation
+    n_check = I(100)   # Number of iterations between each residual calculation
+    nvis    = I(100)   # Number of iterations between each display plot
     h_eff   = T(1/sqrt(_dx2 + _dy2))   # Effective grid spacing [m]
-    lambda  = T(4*(_dx2 + _dy2))       # Maximum value for 2D discrete laplacian
-    rho_pt  = eta*dtau*lambda/cfl_v # Artificial density for pseudo-transience
-    _rho_pt = 1/rho_pt              # Inverse artificial density
-    v_pt    = cfl_a*h_eff/dtau      # Pressure wave velocity
-    beta2   = rho_pt*v_pt^2         # Artificial compressibility
-    # println("rho_pt = ", rho_pt, ", vpt = ", v_pt, ", beta2 = ", beta2)
+    tol     = T(max(1e-6, 1000*eps(T))) # Float-Type dependant tolerance
+    cfl     = T(1.0)    # CFL for pseudo-transients
+    # Derived PT parameters
+    lc      = max(w,h)       # Domain scale
+    c       = T(lc/(2*pi))   # Artificial wave velocity
+    dtau    = T(cfl*h_eff/(c*sqrt(2))) # Pseudo-transient time-step
+    rho_pt  = T(eta*pi/(c*h_eff))      # Artificial density
+    _rho_pt = T(1/rho_pt)              # Inverse artificial density
+    beta    = T(1/(rho_pt*c^2))        # Artificial compressibility
+    _beta   = T(1/beta)                # Inverse artificial compressibility
+
     # Results array initialisations
     vx_num = zeros(T, nx, ny-1)
     vy_num = zeros(T, nx-1, ny)
@@ -240,8 +180,9 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::PseudoTransient,
     end
     # Residual initialisations and vector constructions
     r_infc, r_infvx, r_infvy = 2*tol, 2*tol, 2*tol
-    r_inf_vec = Float64[]; nt_vec = Float64[];
-    r_infvx_vec = Float64[]; r_infvy_vec = Float64[]
+    r_inf_vec = T[]; nt_vec = I[];
+    f_scale = max(maximum(abs, fx), maximum(abs, fy), eps(T))
+    # r_infvx_vec = Float64[]; r_infvy_vec = Float64[]
     # While loop for Pseudo-Transient iterations
     anim = Animation(); iter = 1
     @timeit to "SFD Stokes Const Eta" begin
@@ -252,17 +193,17 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::PseudoTransient,
         vy_old .= vy_num
         # Compute Stokes updates
         x_stokes_lv!(p_num, vx_num, vx_old, _dx, _dx2, _dy2, eta, dtau,
-        _rho_pt, fx, vxtop, vxbottom, v_relax)
+        _rho_pt, fx, vxtop, vxbottom)
         y_stokes_lv!(p_num, vy_num, vy_old, _dy, _dx2, _dy2, eta, dtau,
-        _rho_pt, fy, vyleft, vyright, v_relax)
+        _rho_pt, fy, vyleft, vyright)
         # Update continuity utilising updated velocities
-        continuity_lv!(p_num, vx_num, vy_num, _dx, _dy, beta2, dtau, p_relax)
+        continuity_lv!(p_num, vx_num, vy_num, _dx, _dy, _beta, dtau)
         if !benchmark
             # Compute residuals
             if mod(iter, n_check) == 0
-                r_infc  = maximum(abs, p_num.-p_old)/(p_relax*beta2*dtau)
-                r_infvx = maximum(abs, vx_num.- vx_old)/(v_relax*_rho_pt*dtau)
-                r_infvy = maximum(abs, vy_num.-vy_old)/(v_relax*_rho_pt*dtau)
+                r_infc  = maximum(abs, p_num.-p_old)*beta/dtau/f_scale/h_eff
+                r_infvx = maximum(abs, vx_num.- vx_old)/(_rho_pt*dtau)/f_scale
+                r_infvy = maximum(abs, vy_num.-vy_old)/(_rho_pt*dtau)/f_scale
                 push!(r_inf_vec, max(r_infc,r_infvx,r_infvy))
                 push!(nt_vec, iter)
             end
@@ -285,7 +226,9 @@ function isoviscous_stokes(ModelParams, BCConfig, ::VelP, ::PseudoTransient,
         iter += 1
     end
     end
-    # gif(anim, "isovisc_pt.gif", fps = 15)
+    if !benchmark && max(r_infc, r_infvx, r_infvy) >= tol
+        @warn "PT solver did not converge" iter r_infc r_infvx r_infvy
+    end
 
     if benchmark
         t_toc = TimerOutputs.time(to["SFD Stokes Const Eta"])*1e-9

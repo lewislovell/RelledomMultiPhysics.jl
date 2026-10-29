@@ -1,6 +1,6 @@
 module ModelRunner
 
-using Revise
+#using Revise
 using RelledomMultiPhysics
 using RelledomMultiPhysics.SolverCore
 using RelledomMultiPhysics.StokesSolvers
@@ -88,22 +88,26 @@ function plot_output(xvec, yvec, var, title_str; cbar=:berlin)
 end
 
 function main()
-    Params = MMS.MMSParameters{Float32, Int32}()
+    # Params = MMS.MMSParameters{Float32, Int32}()
     # Params = gpu_config
-    # Params = ModelParams{Float32, Int32}
+    Params = ModelParams{Float32, Int32}
     BCCParams = BCConfig(bc_vx, bc_vy, bc_p)
 
-    MMSSol, MMSBcs = MMS.mms_2d_validation(Params)
+    # MMSSol, MMSBcs = MMS.mms_2d_validation(Params)
+
+    # (vx_num, vy_num, p_num), Coordinates = isoviscous_stokes(Params, MMSBcs,
+    #     VelP(), PseudoTransient(), CPULV(), false, true, MMSSol = MMSSol,
+    #     VldParams=Params)
 
     # (vx_num, vy_num, p_num), Coordinates = isoviscous_stokes(Params, MMSBcs, 
-    #     VelP(), DirectMonolithic(), CPUSingle(), false, true, MMSSol = MMSSol,
+    #     VelP(), PseudoTransient(), GPU(), false, true, MMSSol = MMSSol,
     #     VldParams=Params)
-    (vx_num, vy_num, p_num), Coordinates = isoviscous_stokes(Params, MMSBcs, 
-        VelP(), PseudoTransient(), GPUSM(), false, true, MMSSol = MMSSol,
-        VldParams=Params)
 
     # (vx_num, vy_num, p_num), Coordinates, Performance = isoviscous_stokes(Params(),BCCParams, 
     #     VelP(), PseudoTransient(), CPUSingle(), true, false)
+
+    (vx_num, vy_num, p_num), Coordinates = isoviscous_stokes(Params(),BCCParams,
+        VelP(), PseudoTransient(), GPU(), false, false)
     
     # summary = run_benchmark(; nsamples = 20) do
     #     isoviscous_stokes(Params(),BCCParams, 
